@@ -244,6 +244,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const setStoreThreadError = useStore((store) => store.setError);
   const setStoreThreadBranch = useStore((store) => store.setThreadBranch);
   const { settings } = useAppSettings();
+  const setStickyComposerProvider = useComposerDraftStore((store) => store.setStickyProvider);
   const setStickyComposerModel = useComposerDraftStore((store) => store.setStickyModel);
   const timestampFormat = settings.timestampFormat;
   const navigate = useNavigate();
@@ -593,11 +594,12 @@ export default function ChatView({ threadId }: ChatViewProps) {
     ? (sessionProvider ?? selectedProviderByThreadId ?? null)
     : null;
   const selectedProvider: ProviderKind = lockedProvider ?? selectedProviderByThreadId ?? "codex";
+  const customModelsByProvider = useMemo(() => getCustomModelsByProvider(settings), [settings]);
   const baseThreadModel = resolveModelSlugForProvider(
     selectedProvider,
     activeThread?.model ?? activeProject?.model ?? getDefaultModel(selectedProvider),
+    [...customModelsByProvider[selectedProvider], activeThread?.model, activeProject?.model],
   );
-  const customModelsByProvider = useMemo(() => getCustomModelsByProvider(settings), [settings]);
   const selectedModel = useMemo(() => {
     const draftModel = composerDraft.model;
     if (!draftModel) {
@@ -619,16 +621,41 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
   const providerOptionsForDispatch = useMemo(() => {
-    if (!settings.codexBinaryPath && !settings.codexHomePath) {
+    const codexOptions =
+      settings.codexBinaryPath ||
+      settings.codexHomePath ||
+      settings.codexBaseUrl ||
+      settings.codexApiKey
+        ? {
+            ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
+            ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
+            ...(settings.codexBaseUrl ? { baseUrl: settings.codexBaseUrl } : {}),
+            ...(settings.codexApiKey ? { apiKey: settings.codexApiKey } : {}),
+          }
+        : undefined;
+    const claudeOptions =
+      settings.claudeBaseUrl || settings.claudeApiKey
+        ? {
+            ...(settings.claudeBaseUrl ? { baseUrl: settings.claudeBaseUrl } : {}),
+            ...(settings.claudeApiKey ? { apiKey: settings.claudeApiKey } : {}),
+          }
+        : undefined;
+
+    if (!codexOptions && !claudeOptions) {
       return undefined;
     }
     return {
-      codex: {
-        ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-        ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-      },
+      ...(codexOptions ? { codex: codexOptions } : {}),
+      ...(claudeOptions ? { claudeAgent: claudeOptions } : {}),
     };
-  }, [settings.codexBinaryPath, settings.codexHomePath]);
+  }, [
+    settings.claudeApiKey,
+    settings.claudeBaseUrl,
+    settings.codexApiKey,
+    settings.codexBaseUrl,
+    settings.codexBinaryPath,
+    settings.codexHomePath,
+  ]);
   const selectedModelForPicker = selectedModel;
   const modelOptionsByProvider = useMemo(
     () => getCustomModelOptionsByProvider(settings),
@@ -3099,6 +3126,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       const resolvedModel = resolveAppModelSelection(provider, customModelsByProvider, model);
       setComposerDraftProvider(activeThread.id, provider);
       setComposerDraftModel(activeThread.id, resolvedModel);
+      setStickyComposerProvider(provider);
       setStickyComposerModel(resolvedModel);
       scheduleComposerFocus();
     },
@@ -3108,6 +3136,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       scheduleComposerFocus,
       setComposerDraftModel,
       setComposerDraftProvider,
+      setStickyComposerProvider,
       setStickyComposerModel,
       customModelsByProvider,
     ],

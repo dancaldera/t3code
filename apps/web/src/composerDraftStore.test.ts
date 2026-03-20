@@ -67,6 +67,7 @@ function resetComposerDraftStore() {
     draftsByThreadId: {},
     draftThreadsByThreadId: {},
     projectDraftThreadIdByProjectId: {},
+    stickyProvider: null,
     stickyModel: null,
     stickyModelOptions: {},
   });

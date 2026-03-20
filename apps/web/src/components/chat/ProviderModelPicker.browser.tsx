@@ -10,10 +10,12 @@ const MODEL_OPTIONS_BY_PROVIDER = {
     { slug: "claude-opus-4-6", name: "Claude Opus 4.6" },
     { slug: "claude-sonnet-4-6", name: "Claude Sonnet 4.6" },
     { slug: "claude-haiku-4-5", name: "Claude Haiku 4.5" },
+    { slug: "claude-proxy-custom", name: "claude-proxy-custom" },
   ],
   codex: [
     { slug: "gpt-5-codex", name: "GPT-5 Codex" },
     { slug: "gpt-5.3-codex", name: "GPT-5.3 Codex" },
+    { slug: "codex-proxy-custom", name: "codex-proxy-custom" },
   ],
 } as const satisfies Record<ProviderKind, ReadonlyArray<{ slug: ModelSlug; name: string }>>;
 
@@ -107,6 +109,26 @@ describe("ProviderModelPicker", () => {
         "claudeAgent",
         "claude-sonnet-4-6",
       );
+    } finally {
+      await mounted.cleanup();
+    }
+  });
+
+  it("shows saved custom models for a locked provider", async () => {
+    const mounted = await mountPicker({
+      provider: "claudeAgent",
+      model: "claude-proxy-custom",
+      lockedProvider: "claudeAgent",
+    });
+
+    try {
+      await page.getByRole("button").click();
+
+      await vi.waitFor(() => {
+        const text = document.body.textContent ?? "";
+        expect(text).toContain("claude-proxy-custom");
+        expect(text).not.toContain("codex-proxy-custom");
+      });
     } finally {
       await mounted.cleanup();
     }

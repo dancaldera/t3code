@@ -304,6 +304,31 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("injects claude proxy env overrides into query options", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: "claudeAgent",
+        runtimeMode: "full-access",
+        providerOptions: {
+          claudeAgent: {
+            baseUrl: "https://claude-proxy.example",
+            apiKey: "claude-key",
+          },
+        },
+      });
+
+      const createInput = harness.getLastCreateQueryInput();
+      assert.equal(createInput?.options.env?.ANTHROPIC_BASE_URL, "https://claude-proxy.example");
+      assert.equal(createInput?.options.env?.ANTHROPIC_API_KEY, "claude-key");
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("forwards claude effort levels into query options", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

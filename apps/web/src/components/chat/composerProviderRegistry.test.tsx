@@ -107,6 +107,27 @@ describe("getComposerProviderState", () => {
     });
   });
 
+  it("keeps custom Claude models conservative and strips speculative traits", () => {
+    const state = getComposerProviderState({
+      provider: "claudeAgent",
+      model: "claude-custom-internal",
+      prompt: "Ultrathink:\nThis should not activate",
+      modelOptions: {
+        claudeAgent: {
+          effort: "max",
+          thinking: false,
+          fastMode: true,
+        },
+      },
+    });
+
+    expect(state).toEqual({
+      provider: "claudeAgent",
+      promptEffort: null,
+      modelOptionsForDispatch: undefined,
+    });
+  });
+
   it("ignores codex options while resolving Claude state", () => {
     const state = getComposerProviderState({
       provider: "claudeAgent",

@@ -303,7 +303,7 @@ describe("ProviderCommandReactor", () => {
     expect(harness.startSession.mock.calls[0]?.[0]).toEqual(ThreadId.makeUnsafe("thread-1"));
     expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
       cwd: "/tmp/provider-project",
-      model: "gpt-5-codex",
+      model: "gpt-5.4",
       runtimeMode: "approval-required",
     });
 
@@ -599,6 +599,106 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
+  it("accepts custom claude model slugs when provider is explicitly claude", async () => {
+    const harness = await createHarness({ threadModel: "claude-proxy-initial" });
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-claude-custom-model"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-claude-custom-model"),
+          role: "user",
+          text: "hello custom claude model",
+          attachments: [],
+        },
+        provider: "claudeAgent",
+        model: "sonnet-proxy-custom",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      provider: "claudeAgent",
+      model: "sonnet-proxy-custom",
+    });
+  });
+
+  it("accepts custom codex model slugs when the thread is bound to codex", async () => {
+    const harness = await createHarness({ threadModel: "codex-proxy-initial" });
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-codex-custom-model"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-codex-custom-model"),
+          role: "user",
+          text: "hello custom codex model",
+          attachments: [],
+        },
+        provider: "codex",
+        model: "codex-proxy-custom",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls[0]?.[1]).toMatchObject({
+      provider: "codex",
+      model: "codex-proxy-custom",
+    });
+  });
+
+  it("rejects custom models when the explicit provider conflicts with a known thread provider", async () => {
+    const harness = await createHarness({ threadModel: "claude-proxy-initial" });
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-custom-provider-mismatch"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-custom-provider-mismatch"),
+          role: "user",
+          text: "hello",
+          attachments: [],
+        },
+        provider: "codex",
+        model: "codex-proxy-custom",
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(async () => {
+      const readModel = await Effect.runPromise(harness.engine.getReadModel());
+      const thread = readModel.threads.find(
+        (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
+      );
+      return (
+        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed") ??
+        false
+      );
+    });
+
+    expect(harness.startSession).not.toHaveBeenCalled();
+    expect(harness.sendTurn).not.toHaveBeenCalled();
+  });
+
   it("reuses the same provider session when runtime mode is unchanged", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
@@ -708,6 +808,72 @@ describe("ProviderCommandReactor", () => {
       modelOptions: {
         claudeAgent: {
           effort: "max",
+        },
+      },
+    });
+  });
+
+  it("restarts provider sessions when provider options change", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-provider-options-1"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-provider-options-1"),
+          role: "user",
+          text: "first",
+          attachments: [],
+        },
+        providerOptions: {
+          codex: {
+            baseUrl: "https://proxy-one.example/v1",
+            apiKey: "key-one",
+          },
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 1);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.makeUnsafe("cmd-turn-start-provider-options-2"),
+        threadId: ThreadId.makeUnsafe("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-provider-options-2"),
+          role: "user",
+          text: "second",
+          attachments: [],
+        },
+        providerOptions: {
+          codex: {
+            baseUrl: "https://proxy-two.example/v1",
+            apiKey: "key-two",
+          },
+        },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.startSession.mock.calls.length === 2);
+    await waitFor(() => harness.sendTurn.mock.calls.length === 2);
+    expect(harness.startSession.mock.calls[1]?.[1]).toMatchObject({
+      resumeCursor: { opaque: "resume-1" },
+      providerOptions: {
+        codex: {
+          baseUrl: "https://proxy-two.example/v1",
+          apiKey: "key-two",
         },
       },
     });

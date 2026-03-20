@@ -27,6 +27,7 @@ import {
   isCodexCliVersionSupported,
   parseCodexCliVersion,
 } from "./provider/codexCliVersion";
+import { writeManagedCodexConfig } from "./provider/codexManagedConfig";
 
 type PendingRequestKey = string;
 
@@ -73,6 +74,13 @@ interface CodexSessionContext {
   collabReceiverTurns: Map<string, TurnId>;
   nextRequestId: number;
   stopping: boolean;
+}
+
+interface ResolvedCodexProviderOptions {
+  readonly binaryPath?: string;
+  readonly homePath?: string;
+  readonly baseUrl?: string;
+  readonly apiKey?: string;
 }
 
 interface JsonRpcError {
@@ -515,11 +523,13 @@ export interface CodexAppServerManagerEvents {
 
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
+  private readonly fallbackStateDir: string | undefined;
 
   private runPromise: (effect: Effect.Effect<unknown, never>) => Promise<unknown>;
-  constructor(services?: ServiceMap.ServiceMap<never>) {
+  constructor(services?: ServiceMap.ServiceMap<never>, options?: { readonly stateDir?: string }) {
     super();
     this.runPromise = services ? Effect.runPromiseWith(services) : Effect.runPromise;
+    this.fallbackStateDir = options?.stateDir;
   }
 
   async startSession(input: CodexAppServerStartSessionInput): Promise<ProviderSession> {
@@ -543,7 +553,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
 
       const codexOptions = readCodexProviderOptions(input);
       const codexBinaryPath = codexOptions.binaryPath ?? "codex";
-      const codexHomePath = codexOptions.homePath;
+      const codexHomePath = await this.resolveCodexHomePath(codexOptions);
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
         cwd: resolvedCwd,
@@ -730,6 +740,20 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       }
       throw new Error(message, { cause: error });
     }
+  }
+
+  private async resolveCodexHomePath(
+    input: ResolvedCodexProviderOptions,
+  ): Promise<string | undefined> {
+    if (input.baseUrl || input.apiKey) {
+      return writeManagedCodexConfig({
+        ...(this.fallbackStateDir ? { stateDir: this.fallbackStateDir } : {}),
+        ...(input.baseUrl ? { baseUrl: input.baseUrl } : {}),
+        ...(input.apiKey ? { apiKey: input.apiKey } : {}),
+      });
+    }
+
+    return input.homePath;
   }
 
   async sendTurn(input: CodexAppServerSendTurnInput): Promise<ProviderTurnStartResult> {
@@ -1591,10 +1615,9 @@ function normalizeProviderThreadId(value: string | undefined): string | undefine
   return brandIfNonEmpty(value, (normalized) => normalized);
 }
 
-function readCodexProviderOptions(input: CodexAppServerStartSessionInput): {
-  readonly binaryPath?: string;
-  readonly homePath?: string;
-} {
+function readCodexProviderOptions(
+  input: CodexAppServerStartSessionInput,
+): ResolvedCodexProviderOptions {
   const options = input.providerOptions?.codex;
   if (!options) {
     return {};
@@ -1602,6 +1625,8 @@ function readCodexProviderOptions(input: CodexAppServerStartSessionInput): {
   return {
     ...(options.binaryPath ? { binaryPath: options.binaryPath } : {}),
     ...(options.homePath ? { homePath: options.homePath } : {}),
+    ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
+    ...(options.apiKey ? { apiKey: options.apiKey } : {}),
   };
 }
 

@@ -24,6 +24,8 @@ describe("ProviderSessionStartInput", () => {
         codex: {
           binaryPath: "/usr/local/bin/codex",
           homePath: "/tmp/.codex",
+          baseUrl: "https://your-proxy.com/v1",
+          apiKey: "codex-key",
         },
       },
     });
@@ -32,6 +34,8 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.modelOptions?.codex?.fastMode).toBe(true);
     expect(parsed.providerOptions?.codex?.binaryPath).toBe("/usr/local/bin/codex");
     expect(parsed.providerOptions?.codex?.homePath).toBe("/tmp/.codex");
+    expect(parsed.providerOptions?.codex?.baseUrl).toBe("https://your-proxy.com/v1");
+    expect(parsed.providerOptions?.codex?.apiKey).toBe("codex-key");
   });
 
   it("rejects payloads without runtime mode", () => {
@@ -61,6 +65,8 @@ describe("ProviderSessionStartInput", () => {
           binaryPath: "/usr/local/bin/claude",
           permissionMode: "plan",
           maxThinkingTokens: 12_000,
+          baseUrl: "https://your-proxy.com",
+          apiKey: "claude-key",
         },
       },
       runtimeMode: "full-access",
@@ -72,6 +78,8 @@ describe("ProviderSessionStartInput", () => {
     expect(parsed.providerOptions?.claudeAgent?.binaryPath).toBe("/usr/local/bin/claude");
     expect(parsed.providerOptions?.claudeAgent?.permissionMode).toBe("plan");
     expect(parsed.providerOptions?.claudeAgent?.maxThinkingTokens).toBe(12_000);
+    expect(parsed.providerOptions?.claudeAgent?.baseUrl).toBe("https://your-proxy.com");
+    expect(parsed.providerOptions?.claudeAgent?.apiKey).toBe("claude-key");
     expect(parsed.runtimeMode).toBe("full-access");
   });
 });

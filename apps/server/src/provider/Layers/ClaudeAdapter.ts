@@ -2557,6 +2557,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ...(typeof thinking === "boolean" ? { alwaysThinkingEnabled: thinking } : {}),
           ...(fastMode ? { fastMode: true } : {}),
         };
+        const queryEnv = {
+          ...process.env,
+          ...(providerOptions?.baseUrl ? { ANTHROPIC_BASE_URL: providerOptions.baseUrl } : {}),
+          ...(providerOptions?.apiKey ? { ANTHROPIC_API_KEY: providerOptions.apiKey } : {}),
+        };
 
         const queryOptions: ClaudeQueryOptions = {
           ...(input.cwd ? { cwd: input.cwd } : {}),
@@ -2575,7 +2580,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ...(newSessionId ? { sessionId: newSessionId } : {}),
           includePartialMessages: true,
           canUseTool,
-          env: process.env,
+          env: queryEnv,
           ...(input.cwd ? { additionalDirectories: [input.cwd] } : {}),
         };
 

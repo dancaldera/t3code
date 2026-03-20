@@ -72,12 +72,16 @@ function SettingsRouteView() {
 
   const codexBinaryPath = settings.codexBinaryPath;
   const codexHomePath = settings.codexHomePath;
+  const codexBaseUrl = settings.codexBaseUrl;
+  const codexApiKey = settings.codexApiKey;
+  const claudeBaseUrl = settings.claudeBaseUrl;
+  const claudeApiKey = settings.claudeApiKey;
   const keybindingsConfigPath = serverConfigQuery.data?.keybindingsConfigPath ?? null;
   const availableEditors = serverConfigQuery.data?.availableEditors;
 
   const gitTextGenerationModelOptions = getAppModelOptions(
     "codex",
-    settings.customCodexModels,
+    getCustomModelsForProvider(settings, "codex"),
     settings.textGenerationModel,
   );
   const selectedGitTextGenerationModelLabel =
@@ -143,7 +147,9 @@ function SettingsRouteView() {
         return;
       }
 
-      updateSettings(patchCustomModels(provider, [...customModels, normalized]));
+      updateSettings(
+        patchCustomModels(provider, [...customModels, normalized], settings.customModels),
+      );
       setCustomModelInputByProvider((existing) => ({
         ...existing,
         [provider]: "",
@@ -163,6 +169,7 @@ function SettingsRouteView() {
         patchCustomModels(
           provider,
           customModels.filter((model) => model !== slug),
+          settings.customModels,
         ),
       );
       setCustomModelErrorByProvider((existing) => ({
@@ -432,9 +439,11 @@ function SettingsRouteView() {
                                 variant="outline"
                                 onClick={() =>
                                   updateSettings(
-                                    patchCustomModels(provider, [
-                                      ...getDefaultCustomModelsForProvider(defaults, provider),
-                                    ]),
+                                    patchCustomModels(
+                                      provider,
+                                      [...getDefaultCustomModelsForProvider(defaults, provider)],
+                                      settings.customModels,
+                                    ),
                                   )
                                 }
                               >
@@ -473,6 +482,123 @@ function SettingsRouteView() {
                     </div>
                   );
                 })}
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5">
+              <div className="mb-4">
+                <h2 className="text-sm font-medium text-foreground">Provider proxies</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  These overrides apply only to new sessions started by T3 Code.
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-xl border border-border bg-background/50 p-4">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-foreground">Codex</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Applied only to Codex sessions started by T3 Code.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label htmlFor="codex-base-url" className="block space-y-1">
+                      <span className="text-xs font-medium text-foreground">Base URL</span>
+                      <Input
+                        id="codex-base-url"
+                        value={codexBaseUrl}
+                        onChange={(event) =>
+                          updateSettings({ codexBaseUrl: event.target.value.trim() })
+                        }
+                        placeholder="https://your-proxy.com/v1"
+                        spellCheck={false}
+                      />
+                    </label>
+
+                    <label htmlFor="codex-api-key" className="block space-y-1">
+                      <span className="text-xs font-medium text-foreground">API key</span>
+                      <Input
+                        id="codex-api-key"
+                        type="password"
+                        value={codexApiKey}
+                        onChange={(event) =>
+                          updateSettings({ codexApiKey: event.target.value.trim() })
+                        }
+                        placeholder="your-key"
+                        spellCheck={false}
+                      />
+                    </label>
+
+                    <div className="flex justify-end">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() =>
+                          updateSettings({
+                            codexBaseUrl: defaults.codexBaseUrl,
+                            codexApiKey: defaults.codexApiKey,
+                          })
+                        }
+                      >
+                        Reset Codex proxy
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-background/50 p-4">
+                  <div className="mb-4">
+                    <h3 className="text-sm font-medium text-foreground">Claude</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Applied only to Claude sessions started by T3 Code.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label htmlFor="claude-base-url" className="block space-y-1">
+                      <span className="text-xs font-medium text-foreground">Base URL</span>
+                      <Input
+                        id="claude-base-url"
+                        value={claudeBaseUrl}
+                        onChange={(event) =>
+                          updateSettings({ claudeBaseUrl: event.target.value.trim() })
+                        }
+                        placeholder="https://your-proxy.com"
+                        spellCheck={false}
+                      />
+                    </label>
+
+                    <label htmlFor="claude-api-key" className="block space-y-1">
+                      <span className="text-xs font-medium text-foreground">API key</span>
+                      <Input
+                        id="claude-api-key"
+                        type="password"
+                        value={claudeApiKey}
+                        onChange={(event) =>
+                          updateSettings({ claudeApiKey: event.target.value.trim() })
+                        }
+                        placeholder="your-key"
+                        spellCheck={false}
+                      />
+                    </label>
+
+                    <div className="flex justify-end">
+                      <Button
+                        size="xs"
+                        variant="outline"
+                        onClick={() =>
+                          updateSettings({
+                            claudeBaseUrl: defaults.claudeBaseUrl,
+                            claudeApiKey: defaults.claudeApiKey,
+                          })
+                        }
+                      >
+                        Reset Claude proxy
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </section>
 

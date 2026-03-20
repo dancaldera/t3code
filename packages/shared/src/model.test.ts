@@ -16,6 +16,7 @@ import {
   getModelOptions,
   getReasoningEffortOptions,
   inferProviderForModel,
+  isBuiltInModelForProvider,
   isClaudeUltrathinkPrompt,
   normalizeClaudeModelOptions,
   normalizeCodexModelOptions,
@@ -85,6 +86,21 @@ describe("resolveModelSlug", () => {
     expect(resolveModelSlugForProvider("claudeAgent", "sonnet")).toBe("claude-sonnet-4-6");
     expect(resolveModelSlugForProvider("claudeAgent", "gpt-5.3-codex")).toBe(
       DEFAULT_MODEL_BY_PROVIDER.claudeAgent,
+    );
+  });
+
+  it("preserves allowed provider-bound custom models", () => {
+    expect(resolveModelSlugForProvider("codex", "acme-codex-proxy", ["acme-codex-proxy"])).toBe(
+      "acme-codex-proxy",
+    );
+    expect(
+      resolveModelSlugForProvider("claudeAgent", "acme-claude-proxy", ["acme-claude-proxy"]),
+    ).toBe("acme-claude-proxy");
+  });
+
+  it("rejects preserving a known model from the other provider even when allowed", () => {
+    expect(resolveModelSlugForProvider("codex", "claude-sonnet-4-6", ["claude-sonnet-4-6"])).toBe(
+      DEFAULT_MODEL_BY_PROVIDER.codex,
     );
   });
 
@@ -205,6 +221,15 @@ describe("inferProviderForModel", () => {
   });
 });
 
+describe("isBuiltInModelForProvider", () => {
+  it("recognizes only built-in models for the given provider", () => {
+    expect(isBuiltInModelForProvider("codex", "gpt-5.4")).toBe(true);
+    expect(isBuiltInModelForProvider("claudeAgent", "sonnet")).toBe(true);
+    expect(isBuiltInModelForProvider("codex", "claude-sonnet-4-6")).toBe(false);
+    expect(isBuiltInModelForProvider("claudeAgent", "custom/internal-model")).toBe(false);
+  });
+});
+
 describe("getDefaultReasoningEffort", () => {
   it("returns provider-scoped defaults", () => {
     expect(getDefaultReasoningEffort("codex")).toBe(DEFAULT_REASONING_EFFORT_BY_PROVIDER.codex);
@@ -287,6 +312,16 @@ describe("normalizeClaudeModelOptions", () => {
     ).toEqual({
       thinking: false,
     });
+  });
+
+  it("drops speculative options for unknown custom claude models", () => {
+    expect(
+      normalizeClaudeModelOptions("claude-custom-internal", {
+        thinking: false,
+        effort: "max",
+        fastMode: true,
+      }),
+    ).toBeUndefined();
   });
 });
 

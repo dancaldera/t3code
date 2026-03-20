@@ -1283,7 +1283,10 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
           return options.manager;
         }
         const services = yield* Effect.services<never>();
-        return options?.makeManager?.(services) ?? new CodexAppServerManager(services);
+        return (
+          options?.makeManager?.(services) ??
+          new CodexAppServerManager(services, { stateDir: serverConfig.stateDir })
+        );
       }),
       (manager) =>
         Effect.sync(() => {
