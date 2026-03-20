@@ -29,12 +29,22 @@ export interface SelectableModelOption {
   name: string;
 }
 
+const PROVIDERS: readonly ProviderKind[] = ["codex", "claudeAgent"];
+
 export function getModelOptions(provider: ProviderKind = "codex") {
   return MODEL_OPTIONS_BY_PROVIDER[provider];
 }
 
 export function getDefaultModel(provider: ProviderKind = "codex"): ModelSlug {
   return DEFAULT_MODEL_BY_PROVIDER[provider];
+}
+
+export function isBuiltInModelForProvider(
+  provider: ProviderKind,
+  model: string | null | undefined,
+): boolean {
+  const normalized = normalizeModelSlug(model, provider);
+  return normalized !== null && MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized);
 }
 
 export function supportsClaudeFastMode(model: string | null | undefined): boolean {
@@ -132,8 +142,35 @@ export function resolveModelSlug(
 export function resolveModelSlugForProvider(
   provider: ProviderKind,
   model: string | null | undefined,
+  allowedCustomModels?: Iterable<string | null | undefined>,
 ): ModelSlug {
-  return resolveModelSlug(model, provider);
+  const normalized = normalizeModelSlug(model, provider);
+  if (!normalized) {
+    return DEFAULT_MODEL_BY_PROVIDER[provider];
+  }
+
+  if (MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized)) {
+    return normalized;
+  }
+
+  if (
+    PROVIDERS.some(
+      (candidateProvider) =>
+        candidateProvider !== provider && isBuiltInModelForProvider(candidateProvider, normalized),
+    )
+  ) {
+    return DEFAULT_MODEL_BY_PROVIDER[provider];
+  }
+
+  if (allowedCustomModels) {
+    for (const candidate of allowedCustomModels) {
+      if (normalizeModelSlug(candidate, provider) === normalized) {
+        return normalized;
+      }
+    }
+  }
+
+  return DEFAULT_MODEL_BY_PROVIDER[provider];
 }
 
 export function inferProviderForModel(

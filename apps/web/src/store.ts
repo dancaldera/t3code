@@ -259,6 +259,9 @@ export function syncServerReadModel(state: AppState, readModel: OrchestrationRea
             sessionProviderName: thread.session?.providerName ?? null,
           }),
           thread.model,
+          thread.session?.providerName === "codex" || thread.session?.providerName === "claudeAgent"
+            ? [thread.model]
+            : undefined,
         ),
         runtimeMode: thread.runtimeMode,
         interactionMode: thread.interactionMode,

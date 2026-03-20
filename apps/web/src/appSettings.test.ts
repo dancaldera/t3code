@@ -2,6 +2,7 @@ import { Schema } from "effect";
 import { describe, expect, it } from "vitest";
 
 import {
+  type AppSettings,
   AppSettingsSchema,
   DEFAULT_TIMESTAMP_FORMAT,
   getAppModelOptions,
@@ -61,6 +62,7 @@ describe("getAppModelOptions", () => {
       isCustom: true,
     });
   });
+
   it("keeps a saved custom provider model available as an exact slug option", () => {
     const options = getAppModelOptions("claudeAgent", ["claude/custom-opus"], "claude/custom-opus");
 
@@ -110,19 +112,13 @@ describe("timestamp format defaults", () => {
   });
 });
 
-describe("provider-specific custom models", () => {
-  it("includes provider-specific custom slugs in non-codex model lists", () => {
-    const claudeOptions = getAppModelOptions("claudeAgent", ["claude/custom-opus"]);
-
-    expect(claudeOptions.some((option) => option.slug === "claude/custom-opus")).toBe(true);
-  });
-});
-
 describe("provider-indexed custom model settings", () => {
   const settings = {
-    customCodexModels: ["custom/codex-model"],
-    customClaudeModels: ["claude/custom-opus"],
-  } as const;
+    customModels: [
+      { slug: "custom/codex-model", runtime: "codex" as const },
+      { slug: "claude/custom-opus", runtime: "claudeAgent" as const },
+    ],
+  };
 
   it("exports one provider config per provider", () => {
     expect(MODEL_PROVIDER_SETTINGS.map((config) => config.provider)).toEqual([
@@ -138,9 +134,11 @@ describe("provider-indexed custom model settings", () => {
 
   it("reads default custom models for each provider", () => {
     const defaults = {
-      customCodexModels: ["default/codex-model"],
-      customClaudeModels: ["claude/default-opus"],
-    } as const;
+      customModels: [
+        { slug: "default/codex-model", runtime: "codex" as const },
+        { slug: "claude/default-opus", runtime: "claudeAgent" as const },
+      ],
+    };
 
     expect(getDefaultCustomModelsForProvider(defaults, "codex")).toEqual(["default/codex-model"]);
     expect(getDefaultCustomModelsForProvider(defaults, "claudeAgent")).toEqual([
@@ -148,15 +146,18 @@ describe("provider-indexed custom model settings", () => {
     ]);
   });
 
-  it("patches custom models for codex", () => {
-    expect(patchCustomModels("codex", ["custom/codex-model"])).toEqual({
-      customCodexModels: ["custom/codex-model"],
-    });
-  });
-
-  it("patches custom models for claude", () => {
-    expect(patchCustomModels("claudeAgent", ["claude/custom-opus"])).toEqual({
-      customClaudeModels: ["claude/custom-opus"],
+  it("patches custom models for codex while preserving other providers", () => {
+    expect(
+      patchCustomModels(
+        "codex",
+        ["custom/codex-model"],
+        [{ slug: "claude/custom-opus", runtime: "claudeAgent" }],
+      ),
+    ).toEqual({
+      customModels: [
+        { slug: "claude/custom-opus", runtime: "claudeAgent" },
+        { slug: "custom/codex-model", runtime: "codex" },
+      ],
     });
   });
 
@@ -177,30 +178,14 @@ describe("provider-indexed custom model settings", () => {
       modelOptionsByProvider.claudeAgent.some((option) => option.slug === "claude/custom-opus"),
     ).toBe(true);
   });
-
-  it("normalizes and deduplicates custom model options per provider", () => {
-    const modelOptionsByProvider = getCustomModelOptionsByProvider({
-      customCodexModels: ["  custom/codex-model ", "gpt-5.4", "custom/codex-model"],
-      customClaudeModels: [" sonnet ", "claude/custom-opus", "claude/custom-opus"],
-    });
-
-    expect(
-      modelOptionsByProvider.codex.filter((option) => option.slug === "custom/codex-model"),
-    ).toHaveLength(1);
-    expect(modelOptionsByProvider.codex.some((option) => option.slug === "gpt-5.4")).toBe(true);
-    expect(
-      modelOptionsByProvider.claudeAgent.filter((option) => option.slug === "claude/custom-opus"),
-    ).toHaveLength(1);
-    expect(
-      modelOptionsByProvider.claudeAgent.some((option) => option.slug === "claude-sonnet-4-6"),
-    ).toBe(true);
-  });
 });
 
 describe("AppSettingsSchema", () => {
-  it("fills decoding defaults for persisted settings that predate newer keys", () => {
-    const decode = Schema.decodeSync(Schema.fromJsonString(AppSettingsSchema));
+  const decode = Schema.decodeUnknownSync(Schema.fromJsonString(AppSettingsSchema) as never) as (
+    input: string,
+  ) => AppSettings;
 
+  it("fills decoding defaults for persisted settings that predate newer keys", () => {
     expect(
       decode(
         JSON.stringify({
@@ -215,8 +200,21 @@ describe("AppSettingsSchema", () => {
       confirmThreadDelete: false,
       enableAssistantStreaming: false,
       timestampFormat: DEFAULT_TIMESTAMP_FORMAT,
-      customCodexModels: [],
-      customClaudeModels: [],
+      customModels: [],
     });
+  });
+
+  it("migrates legacy provider-scoped custom model arrays into canonical customModels", () => {
+    expect(
+      decode(
+        JSON.stringify({
+          customCodexModels: ["codex-proxy", "gpt-5.4"],
+          customClaudeModels: ["claude-proxy", "sonnet"],
+        }),
+      ).customModels,
+    ).toEqual([
+      { slug: "codex-proxy", runtime: "codex" },
+      { slug: "claude-proxy", runtime: "claudeAgent" },
+    ]);
   });
 });

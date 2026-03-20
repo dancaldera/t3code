@@ -26,7 +26,7 @@ import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
-import { inferProviderForModel } from "@t3tools/shared/model";
+import { inferProviderForModel, isBuiltInModelForProvider } from "@t3tools/shared/model";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -80,6 +80,23 @@ const sameModelOptions = (
   left: ProviderModelOptions | undefined,
   right: ProviderModelOptions | undefined,
 ): boolean => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+
+const sameProviderOptions = (
+  left: ProviderStartOptions | undefined,
+  right: ProviderStartOptions | undefined,
+): boolean => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+
+const inferThreadProvider = (input: {
+  readonly currentProvider: ProviderKind | undefined;
+  readonly threadModel: string;
+  readonly requestedProvider?: ProviderKind;
+}): ProviderKind =>
+  input.currentProvider ??
+  inferProviderForModel(input.threadModel, input.requestedProvider ?? "codex");
+
+const isKnownForDifferentProvider = (provider: ProviderKind, model: string): boolean =>
+  (provider === "codex" && isBuiltInModelForProvider("claudeAgent", model)) ||
+  (provider === "claudeAgent" && isBuiltInModelForProvider("codex", model));
 
 function isUnknownPendingApprovalRequestError(cause: Cause.Cause<ProviderServiceError>): boolean {
   const error = Cause.squash(cause);
@@ -233,7 +250,11 @@ const make = Effect.gen(function* () {
     )
       ? thread.session.providerName
       : undefined;
-    const threadProvider: ProviderKind = currentProvider ?? inferProviderForModel(thread.model);
+    const threadProvider: ProviderKind = inferThreadProvider({
+      currentProvider,
+      threadModel: thread.model,
+      ...(options?.provider !== undefined ? { requestedProvider: options.provider } : {}),
+    });
     if (options?.provider !== undefined && options.provider !== threadProvider) {
       return yield* new ProviderAdapterRequestError({
         provider: threadProvider,
@@ -243,7 +264,7 @@ const make = Effect.gen(function* () {
     }
     if (
       options?.model !== undefined &&
-      inferProviderForModel(options.model, threadProvider) !== threadProvider
+      isKnownForDifferentProvider(threadProvider, options.model)
     ) {
       return yield* new ProviderAdapterRequestError({
         provider: threadProvider,
@@ -316,12 +337,18 @@ const make = Effect.gen(function* () {
         currentProvider === "claudeAgent" &&
         options?.modelOptions !== undefined &&
         !sameModelOptions(previousModelOptions, options.modelOptions);
+      const previousProviderOptions = threadProviderOptions.get(threadId);
+      const shouldRestartForProviderOptionsChange = !sameProviderOptions(
+        previousProviderOptions,
+        options?.providerOptions,
+      );
 
       if (
         !runtimeModeChanged &&
         !providerChanged &&
         !shouldRestartForModelChange &&
-        !shouldRestartForModelOptionsChange
+        !shouldRestartForModelOptionsChange &&
+        !shouldRestartForProviderOptionsChange
       ) {
         return existingSessionThreadId;
       }
@@ -342,6 +369,7 @@ const make = Effect.gen(function* () {
         modelChanged,
         shouldRestartForModelChange,
         shouldRestartForModelOptionsChange,
+        shouldRestartForProviderOptionsChange,
         hasResumeCursor: resumeCursor !== undefined,
       });
       const restartedSession = yield* startProviderSession({
@@ -389,6 +417,8 @@ const make = Effect.gen(function* () {
     });
     if (input.providerOptions !== undefined) {
       threadProviderOptions.set(input.threadId, input.providerOptions);
+    } else {
+      threadProviderOptions.delete(input.threadId);
     }
     if (input.modelOptions !== undefined) {
       threadModelOptions.set(input.threadId, input.modelOptions);

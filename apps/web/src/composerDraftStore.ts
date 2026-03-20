@@ -105,6 +105,7 @@ const PersistedComposerDraftStoreState = Schema.Struct({
   draftsByThreadId: Schema.Record(ThreadId, PersistedComposerThreadDraftState),
   draftThreadsByThreadId: Schema.Record(ThreadId, PersistedDraftThreadState),
   projectDraftThreadIdByProjectId: Schema.Record(ProjectId, ThreadId),
+  stickyProvider: Schema.NullOr(ProviderKind),
   stickyModel: Schema.NullOr(Schema.String),
   stickyModelOptions: ProviderModelOptions,
 });
@@ -146,6 +147,7 @@ interface ComposerDraftStoreState {
   draftsByThreadId: Record<ThreadId, ComposerThreadDraftState>;
   draftThreadsByThreadId: Record<ThreadId, DraftThreadState>;
   projectDraftThreadIdByProjectId: Record<ProjectId, ThreadId>;
+  stickyProvider: ProviderKind | null;
   stickyModel: string | null;
   stickyModelOptions: ProviderModelOptions;
   getDraftThreadByProjectId: (projectId: ProjectId) => ProjectDraftThread | null;
@@ -177,6 +179,7 @@ interface ComposerDraftStoreState {
   clearProjectDraftThreadId: (projectId: ProjectId) => void;
   clearProjectDraftThreadById: (projectId: ProjectId, threadId: ThreadId) => void;
   clearDraftThread: (threadId: ThreadId) => void;
+  setStickyProvider: (provider: ProviderKind | null | undefined) => void;
   setStickyModel: (model: string | null | undefined) => void;
   setStickyModelOptions: (modelOptions: ProviderModelOptions | null | undefined) => void;
   setPrompt: (threadId: ThreadId, prompt: string) => void;
@@ -228,6 +231,7 @@ const EMPTY_PERSISTED_DRAFT_STORE_STATE = Object.freeze<PersistedComposerDraftSt
   draftsByThreadId: {},
   draftThreadsByThreadId: {},
   projectDraftThreadIdByProjectId: {},
+  stickyProvider: null,
   stickyModel: null,
   stickyModelOptions: EMPTY_PROVIDER_MODEL_OPTIONS,
 });
@@ -711,9 +715,10 @@ function migratePersistedComposerDraftStoreState(
   const rawDraftMap = candidate.draftsByThreadId;
   const rawDraftThreadsByThreadId = candidate.draftThreadsByThreadId;
   const rawProjectDraftThreadIdByProjectId = candidate.projectDraftThreadIdByProjectId;
+  const stickyProvider = normalizeProviderKind(candidate.stickyProvider);
   const stickyModel =
     typeof candidate.stickyModel === "string"
-      ? (normalizeModelSlug(candidate.stickyModel, "codex") ?? null)
+      ? (normalizeModelSlug(candidate.stickyModel, stickyProvider ?? "codex") ?? null)
       : null;
   const stickyModelOptions =
     normalizeProviderModelOptions(candidate.stickyModelOptions) ?? EMPTY_PROVIDER_MODEL_OPTIONS;
@@ -734,6 +739,7 @@ function migratePersistedComposerDraftStoreState(
     draftsByThreadId,
     draftThreadsByThreadId,
     projectDraftThreadIdByProjectId,
+    stickyProvider,
     stickyModel,
     stickyModelOptions,
   };
@@ -789,6 +795,7 @@ function partializeComposerDraftStoreState(
     draftsByThreadId: persistedDraftsByThreadId,
     draftThreadsByThreadId: state.draftThreadsByThreadId,
     projectDraftThreadIdByProjectId: state.projectDraftThreadIdByProjectId,
+    stickyProvider: state.stickyProvider,
     stickyModel: state.stickyModel,
     stickyModelOptions: state.stickyModelOptions,
   };
@@ -806,9 +813,11 @@ function normalizeCurrentPersistedComposerDraftStoreState(
       normalizedPersistedState.draftThreadsByThreadId,
       normalizedPersistedState.projectDraftThreadIdByProjectId,
     );
+  const stickyProvider = normalizeProviderKind(normalizedPersistedState.stickyProvider);
   const stickyModel =
     typeof normalizedPersistedState.stickyModel === "string"
-      ? (normalizeModelSlug(normalizedPersistedState.stickyModel, "codex") ?? null)
+      ? (normalizeModelSlug(normalizedPersistedState.stickyModel, stickyProvider ?? "codex") ??
+        null)
       : null;
   const stickyModelOptions =
     normalizeProviderModelOptions(normalizedPersistedState.stickyModelOptions) ??
@@ -821,6 +830,7 @@ function normalizeCurrentPersistedComposerDraftStoreState(
     ),
     draftThreadsByThreadId,
     projectDraftThreadIdByProjectId,
+    stickyProvider,
     stickyModel,
     stickyModelOptions,
   };
@@ -926,6 +936,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
       draftsByThreadId: {},
       draftThreadsByThreadId: {},
       projectDraftThreadIdByProjectId: {},
+      stickyProvider: null,
       stickyModel: null,
       stickyModelOptions: EMPTY_PROVIDER_MODEL_OPTIONS,
       getDraftThreadByProjectId: (projectId) => {
@@ -1164,13 +1175,32 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
         });
       },
       setStickyModel: (model) => {
-        const normalizedModel = normalizeModelSlug(model, "codex") ?? null;
+        const stickyProvider = get().stickyProvider ?? "codex";
+        const normalizedModel = normalizeModelSlug(model, stickyProvider) ?? null;
         set((state) => {
           if (state.stickyModel === normalizedModel) {
             return state;
           }
           return {
             stickyModel: normalizedModel,
+          };
+        });
+      },
+      setStickyProvider: (provider) => {
+        const normalizedProvider = normalizeProviderKind(provider);
+        set((state) => {
+          if (state.stickyProvider === normalizedProvider) {
+            return state;
+          }
+          const normalizedStickyModel =
+            state.stickyModel === null
+              ? null
+              : (normalizeModelSlug(state.stickyModel, normalizedProvider ?? "codex") ?? null);
+          return {
+            stickyProvider: normalizedProvider,
+            ...(state.stickyModel === normalizedStickyModel
+              ? {}
+              : { stickyModel: normalizedStickyModel }),
           };
         });
       },
@@ -1772,6 +1802,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           draftsByThreadId,
           draftThreadsByThreadId: normalizedPersisted.draftThreadsByThreadId,
           projectDraftThreadIdByProjectId: normalizedPersisted.projectDraftThreadIdByProjectId,
+          stickyProvider: normalizedPersisted.stickyProvider,
           stickyModel: normalizedPersisted.stickyModel,
           stickyModelOptions: normalizedPersisted.stickyModelOptions,
         };
